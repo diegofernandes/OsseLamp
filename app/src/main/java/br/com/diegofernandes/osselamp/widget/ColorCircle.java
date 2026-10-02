@@ -7,6 +7,8 @@ import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
+import android.os.Bundle;
+import android.os.Parcelable;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -16,13 +18,26 @@ import android.view.View;
  */
 public class ColorCircle extends View {
 
-    private float center_radius;
     private final static float CENTER_RADIUS_SCALE = 0.4f;
+    private final static float DEFAULT_SIZE_DP = 200f;
+
+    private static final String STATE_SUPER = "superState";
+    private static final String STATE_COLOR = "color";
 
     private Paint mPaint;
     private Paint mCenterPaint;
     private int[] mColors;
     private OnColorChangedListener mListener;
+
+    private float mCenterX;
+    private float mCenterY;
+    private float mCenterRadius;
+    private float mRingInnerRadius;
+    private float mRingOuterRadius;
+
+    private boolean mTrackingCenter;
+    private boolean mTrackingRing;
+    private boolean mHighlightCenter;
 
 
     /**
@@ -37,24 +52,24 @@ public class ColorCircle extends View {
     }
 
     /**
-     * Construct object, initializing with any attributes we understand from a
-     * layout file.
+     * Construct object from a layout file.
      *
-     * These attributes are defined in res/values/attrs.xml .
-     *
-     * @see android.view.View#View(android.content.Context,
-     *      android.util.AttributeSet, java.util.Map)
+     * @see android.view.View#View(android.content.Context, android.util.AttributeSet)
      */
     public ColorCircle(Context context, AttributeSet attrs) {
         super(context, attrs);
-        // TODO what happens with inflateParams
+        init();
+    }
+
+    public ColorCircle(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         init();
     }
 
     /**
      * Initializes variables.
      */
-    void init() {
+    private void init() {
 
         mColors = new int[] {
                 0xFFFF0000, 0xFFFF00FF, 0xFF0000FF, 0xFF00FFFF, 0xFF00FF00,
@@ -71,24 +86,15 @@ public class ColorCircle extends View {
         mCenterPaint.setColor(0xFFFF0000);
     }
 
-    private boolean mTrackingCenter;
-    private boolean mHighlightCenter;
-
     @Override
     protected void onDraw(Canvas canvas) {
-        float outer_radius = Math.min(getWidth(), getHeight())/2;
-        float touch_feedback_ring = center_radius + 2*mCenterPaint.getStrokeWidth();
-        float r = (outer_radius + touch_feedback_ring) / 2;
-
-        canvas.translate(getWidth()/2, getHeight()/2);
-
-        mPaint.setStrokeWidth(outer_radius - touch_feedback_ring);
+        canvas.translate(mCenterX, mCenterY);
 
         // This is the main "color ring"
-        canvas.drawCircle(0, 0, r, mPaint);
+        canvas.drawCircle(0, 0, (mRingOuterRadius + mRingInnerRadius) / 2, mPaint);
 
         // This is the center "activation button" circle
-        canvas.drawCircle(0, 0, center_radius, mCenterPaint);
+        canvas.drawCircle(0, 0, mCenterRadius, mCenterPaint);
 
         if (mTrackingCenter) {
             int c = mCenterPaint.getColor();
@@ -102,7 +108,7 @@ public class ColorCircle extends View {
 
             // The skinny ring around the center to indicate that it is being pressed
             canvas.drawCircle(0, 0,
-                    center_radius + mCenterPaint.getStrokeWidth(),
+                    mCenterRadius + mCenterPaint.getStrokeWidth(),
                     mCenterPaint);
 
             mCenterPaint.setStyle(Paint.Style.FILL);
@@ -116,13 +122,38 @@ public class ColorCircle extends View {
      */
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int maxWidth = MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED
+                ? Integer.MAX_VALUE : MeasureSpec.getSize(widthMeasureSpec);
+        int maxHeight = MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED
+                ? Integer.MAX_VALUE : MeasureSpec.getSize(heightMeasureSpec);
 
-        int max_width = MeasureSpec.getSize(widthMeasureSpec);
-        int max_height = MeasureSpec.getSize(heightMeasureSpec);
-        int size = Math.min(max_width, max_height);
-        this.center_radius = CENTER_RADIUS_SCALE * size/2;
+        int size = Math.min(maxWidth, maxHeight);
+        if (size == Integer.MAX_VALUE) {
+            // No constraint on either side (e.g. inside a ScrollView): fall back to a default size
+            size = Math.round(DEFAULT_SIZE_DP * getResources().getDisplayMetrics().density);
+        }
 
-        setMeasuredDimension(size, size);
+        setMeasuredDimension(resolveSize(size, widthMeasureSpec),
+                resolveSize(size, heightMeasureSpec));
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+
+        int contentWidth = Math.max(0, w - getPaddingLeft() - getPaddingRight());
+        int contentHeight = Math.max(0, h - getPaddingTop() - getPaddingBottom());
+
+        mCenterX = getPaddingLeft() + contentWidth / 2f;
+        mCenterY = getPaddingTop() + contentHeight / 2f;
+
+        mRingOuterRadius = Math.min(contentWidth, contentHeight) / 2f;
+        mCenterRadius = CENTER_RADIUS_SCALE * mRingOuterRadius;
+        // Leave room for the touch feedback ring drawn around the center
+        mRingInnerRadius = Math.min(mRingOuterRadius,
+                mCenterRadius + 2 * mCenterPaint.getStrokeWidth());
+
+        mPaint.setStrokeWidth(mRingOuterRadius - mRingInnerRadius);
     }
 
     public void setColor(int color) {
@@ -166,54 +197,100 @@ public class ColorCircle extends View {
         return Color.argb(a, r, g, b);
     }
 
+    private void updateColor(float x, float y) {
+        float angle = (float)java.lang.Math.atan2(y, x);
+        // need to turn angle [-PI ... PI] into unit [0....1]
+        float unit = angle/(2*(float) Math.PI);
+        if (unit < 0) {
+            unit += 1;
+        }
+        int newcolor = interpColor(mColors, unit);
+        mCenterPaint.setColor(newcolor);
+
+        if (mListener != null) {
+            mListener.onColorChanged(this, newcolor);
+        }
+        invalidate();
+    }
+
+    private void stopTracking() {
+        if (mTrackingCenter) {
+            mTrackingCenter = false;    // so we draw w/o halo
+            invalidate();
+        }
+        mTrackingRing = false;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        float x = event.getX() - getWidth()/2;
-        float y = event.getY() - getHeight()/2;
-        boolean inCenter = PointF.length(x, y) <= center_radius;
+        float x = event.getX() - mCenterX;
+        float y = event.getY() - mCenterY;
+        float distance = PointF.length(x, y);
+        boolean inCenter = distance <= mCenterRadius;
 
-        switch (event.getAction()) {
+        switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 mTrackingCenter = inCenter;
-                if (inCenter) {
+                mTrackingRing = !inCenter
+                        && distance >= mRingInnerRadius
+                        && distance <= mRingOuterRadius;
+                if (mTrackingCenter) {
                     mHighlightCenter = true;
                     invalidate();
-                    break;
+                } else if (mTrackingRing) {
+                    updateColor(x, y);
+                } else {
+                    // Touch outside the center button and the color ring: not ours
+                    return false;
                 }
+                break;
             case MotionEvent.ACTION_MOVE:
                 if (mTrackingCenter) {
                     if (mHighlightCenter != inCenter) {
                         mHighlightCenter = inCenter;
                         invalidate();
                     }
-                } else {
-                    float angle = (float)java.lang.Math.atan2(y, x);
-                    // need to turn angle [-PI ... PI] into unit [0....1]
-                    float unit = angle/(2*(float) Math.PI);
-                    if (unit < 0) {
-                        unit += 1;
-                    }
-                    int newcolor = interpColor(mColors, unit);
-                    mCenterPaint.setColor(newcolor);
-
-                    if (mListener != null) {
-                        mListener.onColorChanged(this, newcolor);
-                    }
-                    invalidate();
+                } else if (mTrackingRing) {
+                    updateColor(x, y);
                 }
                 break;
             case MotionEvent.ACTION_UP:
-                if (mTrackingCenter) {
-                    if (inCenter) {
-                        if (mListener != null) {
-                            mListener.onColorPicked(this, mCenterPaint.getColor());
-                        }
-                    }
-                    mTrackingCenter = false;    // so we draw w/o halo
-                    invalidate();
+                if (mTrackingCenter && inCenter) {
+                    performClick();
                 }
+                stopTracking();
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                stopTracking();
                 break;
         }
         return true;
+    }
+
+    @Override
+    public boolean performClick() {
+        super.performClick();
+        if (mListener != null) {
+            mListener.onColorPicked(this, getColor());
+        }
+        return true;
+    }
+
+    @Override
+    protected Parcelable onSaveInstanceState() {
+        Bundle state = new Bundle();
+        state.putParcelable(STATE_SUPER, super.onSaveInstanceState());
+        state.putInt(STATE_COLOR, getColor());
+        return state;
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Parcelable state) {
+        if (state instanceof Bundle) {
+            Bundle bundle = (Bundle) state;
+            setColor(bundle.getInt(STATE_COLOR, getColor()));
+            state = bundle.getParcelable(STATE_SUPER);
+        }
+        super.onRestoreInstanceState(state);
     }
 }

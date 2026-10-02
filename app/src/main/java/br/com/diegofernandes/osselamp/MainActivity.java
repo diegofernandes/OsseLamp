@@ -3,7 +3,6 @@ package br.com.diegofernandes.osselamp;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 
@@ -22,6 +21,7 @@ public class MainActivity extends ActionBarActivity implements OnColorChangedLis
         setContentView(R.layout.activity_main);
 
         mColorCircle = (ColorCircle) findViewById(R.id.colorPicker);
+        mColorCircle.setOnColorChangedListener(this);
     }
 
     @Override
@@ -38,9 +38,6 @@ public class MainActivity extends ActionBarActivity implements OnColorChangedLis
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
-
-
-
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
