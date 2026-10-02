@@ -3,6 +3,8 @@
 
     <string name="action_settings">Settings</string>
     <string name="powerToggleButton">Power</string>
+    <string name="powerOn">ON</string>
+    <string name="powerOff">OFF</string>
     <string name="fireModeLabel">Fire</string>
     <string name="rainbowModeLabel">Rainbow</string>
     <string name="brightnessLabel">Brightness</string>

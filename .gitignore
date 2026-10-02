@@ -1,7 +1,9 @@
 .gradle
 /local.properties
-/.idea/workspace.xml
-/.idea/libraries
-.DS_Store
 /build
 /captures
+.DS_Store
+
+# Android Studio / IntelliJ (regenerated from the Gradle files on import)
+.idea/
+*.iml

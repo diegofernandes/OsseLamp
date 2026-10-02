@@ -2,7 +2,6 @@ package br.com.diegofernandes.osselamp.widget;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.Shader;
@@ -20,6 +19,7 @@ public class ColorCircle extends View {
 
     private final static float CENTER_RADIUS_SCALE = 0.4f;
     private final static float DEFAULT_SIZE_DP = 200f;
+    private final static float CENTER_STROKE_WIDTH_DP = 2f;
 
     private static final String STATE_SUPER = "superState";
     private static final String STATE_COLOR = "color";
@@ -82,7 +82,7 @@ public class ColorCircle extends View {
         mPaint.setStyle(Paint.Style.STROKE);
 
         mCenterPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        mCenterPaint.setStrokeWidth(5);
+        mCenterPaint.setStrokeWidth(CENTER_STROKE_WIDTH_DP * getResources().getDisplayMetrics().density);
         mCenterPaint.setColor(0xFFFF0000);
     }
 
@@ -170,41 +170,8 @@ public class ColorCircle extends View {
         mListener = colorListener;
     }
 
-    private int ave(int s, int d, float p) {
-        return s + java.lang.Math.round(p * (d - s));
-    }
-
-    private int interpColor(int colors[], float unit) {
-        if (unit <= 0) {
-            return colors[0];
-        }
-        if (unit >= 1) {
-            return colors[colors.length - 1];
-        }
-
-        float p = unit * (colors.length - 1);
-        int i = (int)p;
-        p -= i;
-
-        // now p is just the fractional part [0...1) and i is the index
-        int c0 = colors[i];
-        int c1 = colors[i+1];
-        int a = ave(Color.alpha(c0), Color.alpha(c1), p);
-        int r = ave(Color.red(c0), Color.red(c1), p);
-        int g = ave(Color.green(c0), Color.green(c1), p);
-        int b = ave(Color.blue(c0), Color.blue(c1), p);
-
-        return Color.argb(a, r, g, b);
-    }
-
     private void updateColor(float x, float y) {
-        float angle = (float)java.lang.Math.atan2(y, x);
-        // need to turn angle [-PI ... PI] into unit [0....1]
-        float unit = angle/(2*(float) Math.PI);
-        if (unit < 0) {
-            unit += 1;
-        }
-        int newcolor = interpColor(mColors, unit);
+        int newcolor = ColorMath.interpColor(mColors, ColorMath.angleToUnit(x, y));
         mCenterPaint.setColor(newcolor);
 
         if (mListener != null) {
